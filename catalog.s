@@ -58,20 +58,26 @@ _QADrawSpace mac            ;_QADrawSpace()
           utool $64
           <<<
 
-
+main
+          dum  0
+]ptr      ds   4
+          dend
 
           phk
           plb
 
 
           sta  myID
+          stx  ]ptr+2
+          sty  ]ptr
 
+          jsr  cmdline
 
           psl  #header
           _QADrawString
 
-          psl  #path0
-          psl  #hook
+          psl  #path
+:hook     psl  #hook
           psw  #0           ; no recurse, no wildcard check
           _QAReadDir
 
@@ -79,10 +85,58 @@ _QADrawSpace mac            ;_QADrawSpace()
           clc
           rtl
 
+cmdline
+* check the commandline for a path.
+          ldy  #8
+
+          lda  #0
+          sta  path
+          sep  #$20
+* skip past cmd name
+]loop     lda  []ptr],y
+          beq  :default
+          iny
+          cmp  #' '+1
+          bcs  ]loop
+
+* skip past white space...
+]loop     lda  []ptr],y
+          beq  :default
+          iny
+          cmp  #' '+1
+          bcc  ]loop
+
+* now copy to path...
+          ldx  #0
+          dey
+]loop     lda  []ptr],y
+          beq  :eop
+          iny
+          cmp  #' '+1
+          bcc  :eop
+          sta  path+2,x
+          inx
+          bra  ]loop
+
+:eop      stx  path
+          rep  #$30
+          clc
+          rts
+
+:default
+          rep  #$30
+          lda  #1
+          sta  path
+          lda  #'0:'
+          sta  path+2
+
+          sec
+          rts
+
 
 header    str  'Name             Type Blocks  Modified         Created           Length Auxtype'0d0d
-path0     strl '0'
-path      ds   256
+*path0     strl '0'
+path      ds   256+2
 myID      ds   2
 
 * GetDirEntryRecGS offsets.
@@ -109,10 +163,11 @@ resourceBlocks ds 8
 
 hook
 
+          mx   %00
           dum  1
-:tmp      ds   4
-:dcb      ds   4
-:y        ds   2
+]ptr      ds   4
+]dcb      ds   4
+]y        ds   2
           dend
 
           phb
@@ -132,11 +187,11 @@ hook
 * name... but truncate if > 18 chars
           do   0
           ldy  #name+2
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
           dey
           dey
-          lda  [:dcb],y
+          lda  []dcb],y
           inc
           inc
           pha
@@ -144,18 +199,18 @@ hook
           else
 
           ldy  #name
-          lda  [:dcb],y
+          lda  []dcb],y
           clc
           adc  #2
-          sta  :tmp
+          sta  ]ptr
 
           iny
           iny
-          lda  [:dcb],y
+          lda  []dcb],y
           adc  #0
-          sta  :tmp+2
+          sta  ]ptr+2
 
-          lda  [:tmp]
+          lda  []ptr]
           cmp  #17+1
           bcc  :name
 
@@ -163,7 +218,7 @@ hook
           sta  path
           ldx  #8           ; copy 16 chars
           ldy  #2
-]loop     lda  [:tmp],y
+]loop     lda  []ptr],y
           sta  path,y
           iny
           iny
@@ -179,8 +234,8 @@ hook
 
 
 
-:name     pei  :tmp+2
-          pei  :tmp
+:name     pei  ]ptr+2
+          pei  ]ptr
 :qdsl     _QADrawStringL
           fin
 
@@ -191,7 +246,7 @@ hook
           _QATabtoCol
 
           ldy  #fileType
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
           psl  #:typeStr
           _QAConvertTyp2Txt
@@ -203,11 +258,11 @@ hook
 
 * blocks
           ldy  #blockCount+2
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
           dey
           dey
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
           pea  %0_10_0_0000_0000_0000 ; flags - unsigned, left justified.
           pea  6            ; field size
@@ -218,10 +273,10 @@ hook
 
 * dates
           clc
-          lda  :dcb
+          lda  ]dcb
           adc  #modDateDate
           tax
-          lda  :dcb+2
+          lda  ]dcb+2
           adc  #0
           pha
           phx
@@ -232,10 +287,10 @@ hook
           _QADrawSpace
 
           clc
-          lda  :dcb
+          lda  ]dcb
           adc  #createDateTime
           tax
-          lda  :dcb+2
+          lda  ]dcb+2
           adc  #0
           pha
           phx
@@ -245,11 +300,11 @@ hook
           _QADrawSpace
 * file size
           ldy  #eof+2
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
           dey
           dey
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
 
           pea  #%0_10_0_1_000_0000_0000 ; left justified, $
@@ -262,7 +317,7 @@ hook
 * L= (f8), R=(04),A=(06)
 
           ldy  #fileType
-          lda  [:dcb],y
+          lda  []dcb],y
           ldx  #:leq
           cmp  #$f8
           beq  :at
@@ -280,7 +335,7 @@ hook
 
           pea  0
           ldy  #auxType
-          lda  [:dcb],y
+          lda  []dcb],y
           pha
 
           pea  #%0_10_1_1_000_0000_0000 ; left justified, leading 0s, $
