@@ -26,6 +26,7 @@ attrNoSpec equ $0008
 * direct page
           dum  0
 user_id   ds   2
+cmdptr    ds   4
 handle    ds   4
 ptr       ds   4
 len       ds   2
@@ -42,6 +43,10 @@ q         ds   2
           phk
           plb
           sta  user_id
+
+          stx  cmdptr+2
+          sty  cmdptr
+
 
           jsr  cmdline
           bcs  :exit
