@@ -6,21 +6,26 @@
           rel
           cas  se
 
-          use macgen.equ
-          use macgen.macs
+          use  macgen.equ
+          use  macgen.macs
 
           use  4:mem.macs
           use  4:int.macs
           use  4:util.macs
 
 
-          ent find_entry
-          ent insert_entry
-          ent update_entry
-          ent emplace_entry
-          ent name,flags
+          ent  find_entry
+          ent  insert_entry
+          ent  update_entry
+          ent  emplace_entry
+          ent  name,flags
 
-          ext process_src
+
+          ent  process_file
+          ent  process_dir
+
+          ext  process_src
+          ext  process_mac_dir
 
 _HexDump  mac
           ldx  #$0fff
@@ -50,7 +55,18 @@ start
           plb
 
           sta  myID
+          tdc
+          sta  direct_page
+
+          stx  cmdline+2
+          sty  cmdline
+
+
           jsr  init
+
+
+          jsr  getopt
+          bcs  :exit
 
 
 
@@ -58,11 +74,21 @@ start
 * pass 2 - scan macrofiles for
 
 
-	jsr process_src
+          do   0
+          pha
+          pea  #1
+          _SetTrace
+          pla
+          fin
+
+          jsr  process_src
 
           jsr  dump
+
+:exit
           jsr  cleanup
           lda  #0
+          clc
           rtl
 
 
@@ -70,12 +96,12 @@ start
 dump
 
 
-	do 0
+          do   0
           pei  table+2
           pei  table
           pea  $ffff
           _HexDump
-        fin
+          fin
 
           ldy  #0
 
@@ -89,9 +115,9 @@ dump
 
           iny
           iny
-          lda [table],y
-          and #$00ff
-          bne :ply ; built-in
+          lda  [table],y
+          and  #$00ff
+          bne  :ply         ; built-in
 * bit 15 indicates it's used
 * bit 14 indicate it's defined.
 
@@ -100,13 +126,13 @@ dump
 
 
 *          tya
-*	  lda 1,s
+*   lda 1,s
 *          clc
 *          adc  #4
-	  iny
-	  iny
-	  tya
-	  clc
+          iny
+          iny
+          tya
+          clc
           adc  table
           tax
           lda  #0
@@ -584,6 +610,7 @@ cmp_entry
 * returns carry clear if entry found, carry set if missing.
 * updates index to pointer to entry (which will be empty if not found)
 find_entry
+          debug 'find_entry'
           jsr  hash_node
           jsr  get_bucket
           tay
@@ -620,7 +647,7 @@ find_entry
 
 *insert_entry_mx
 *          php
-*          rep  #$30         
+*          rep  #$30
 *          jsr  insert_entry
 *          bcc  :cc
 *          plp
@@ -632,6 +659,7 @@ find_entry
 *          mx   %00
 
 insert_entry
+          debug 'insert_entry'
           mx   %00
 
           jsr  find_entry
@@ -669,24 +697,24 @@ insert_entry
 
 update_entry
 * update an entry following a successful lookup
-	mx %00
+          mx   %00
 
-	ldy index
-	iny
-	iny
-	lda [table],y
-	ora flags
-	sta flags
-	sta [table],y
-	rts
+          ldy  index
+          iny
+          iny
+          lda  [table],y
+          ora  flags
+          sta  flags
+          sta  [table],y
+          rts
 
 emplace_entry
 * update an entry following an unsuccessful lookup
 
-	mx %00
+          mx   %00
 
-	inc hash_count
-	ldy index
+          inc  hash_count
+          ldy  index
 
           ldx  #0
 ]loop     lda  node,x
@@ -735,10 +763,324 @@ hash_node
           sty  hash
           rts
 
+**********
+
+
+loadfile
+* loads the file, updates fhandle, fptr, fsize
+
+
+
+          pha
+          pha               ; space
+          phl  #input
+          phl  #0           ; pos
+          phl  #-1          ; eof
+          phl  #txttypes    ; ftypes
+          phw  myID
+          phl  #0           ; address
+          phw  #attrLocked.attrFixed.attrNoSpec
+          _QALoadFile
+          plx
+          stx  fhandle
+          plx
+          stx  fhandle+2
+          bcs  :err
+
+          lda  [fhandle]
+          sta  fptr
+          ldy  #2
+          lda  [fhandle],y
+          sta  fptr+2
+
+          ldy  #8           ; GetHandleSize
+          lda  [fhandle],y
+          sta  fsize
+          iny
+          iny
+          lda  [fhandle],y
+          sta  fsize+2
+
+          clc
+          rts
+:err
+          pha
+          pha               ; save
+
+          phl  #input
+          _QADrawErrString
+          phl  #:cosp
+          _QADrawErrString
+          _QAErrorMsg
+
+
+          pla
+          sec
+          rts
+
+:cosp     str  ': '
+
+
+
+txttypes  db   $02,$04,$B0
+
+
+call_line_rtn mac
+*          per  end-1  ; qasm bug
+          pea  end-1
+          pei  line_rtn
+          rts
+end       eom
+
+process_file
+* load
+
+          jsr  loadfile
+          bcc  :ok
+          rts
+:ok
+
+          lda  fsize+2
+          beq  :small
+
+
+
+:large
+
+]loop0
+          ldy  #0
+]loop     call_line_rtn
+          rep  #$20
+          tya
+          bpl  ]loop        ; since this is >= $01_0000, can't have eof in first $7fff bytes
+
+* adjust ptrs, jump to small if possible...
+
+          clc
+          adc  fptr
+          sta  fptr
+          lda  #0
+          adc  fptr+2
+          sta  fptr+2
+
+          lda  fsize
+          sec
+          phy
+          sbc  1,s
+          sta  fsize
+          ply               ; restore
+
+          lda  fsize+2
+          sbc  #0
+          sta  fsize+2
+          bne  ]loop0
+
+:small
+          ldy  #0
+]loop     call_line_rtn
+          rep  #$20
+          cpy  fsize
+          bcc  ]loop
+
+
+          phl  fhandle
+          _DisposeHandle
+          rts
+
+
+
+process_dir
+
+
+          ~QAReadDir #input;#:hook;#0
+* bcs :err
+
+* clc
+          rts
+
+
+:4        strl '4:'
+
+
+:hook
+
+* GetDirEntryRecGS offsets.
+          dum  0
+:pCount   ds   2
+:refNum   ds   2
+:flags    ds   2
+:base     ds   2
+:displacement ds 2
+:name     ds   4
+:entryNum ds   2
+:fileType ds   2
+:eof      ds   4
+:blockCount ds 4
+:createDateTime ds 8
+:modDateDate ds 8
+:access   ds   2
+:auxType  ds   4
+:fileSysID ds  2
+:optionList ds 4
+:resourceEOF ds 8
+:resourceBlocks ds 8
+          dend
+
+
+          mx   %00
+*          dum  1
+*]ptr      ds   4
+*]dcb      ds   4
+*]y        ds   2
+*          dend
+
+          phb
+          phk
+          plb
+          phd
+
+
+          pha
+          lda  direct_page
+          tcd
+          pla
+          sta  dcb
+          stx  dcb+2
+
+*          tya ; $8000 indicates directory
+
+
+          ldy  #:fileType
+          lda  [dcb],y
+          cmp  #$04
+          beq  :txt
+          cmp  #$b0
+          beq  :txt
+          bra  :return
+
+:txt
+* copy name over...
+
+
+          ldy  #:name
+          lda  [dcb],y
+          clc
+          adc  #2
+          sta  ptr
+          iny
+          iny
+          lda  [dcb],y
+          adc  #0
+          sta  ptr+2
+
+          lda  [ptr]
+          cmp  #MAX_PATH
+          bcs  :return
+
+
+          sep  #$20
+          tax
+          tay
+          iny
+
+          sta  input
+]loop
+          lda  [ptr],y
+          sta  input+1,x
+          dey
+          dex
+          bne  ]loop
+
+          rep  #$20
+          jsr  process_file
+
+:return
+          pla
+          pla
+          pla
+          pla
+          pla
+
+          pld
+          plb
+          clc
+          rtl
+
+
+
+
+
+
+
+**********
+
+
+getopt
+          lda  #0
+          ldy  #8
+
+          php
+          sep  #$20
+          stz  input
+
+* skip over name
+]loop     lda  [cmdline],y
+          beq  :err
+          iny
+          cmp  #' '+1
+          bcs  ]loop
+
+*skip over whitespace
+]loop
+          lda  [cmdline],y
+          beq  :err
+          iny
+          cmp  #' '+1
+          bcc  ]loop
+
+* arg1 - input path...
+* todo - quoting?
+
+          ldx  #1
+          sta  input+1
+]loop
+          lda  [cmdline],y
+          beq  :eol
+          iny
+          cmp  #' '+1
+          bcc  :1
+          sta  input+1,x
+          inx
+          bra  ]loop
+:1        txa
+          sta  input
+
+* only ws after...
+]loop     lda  [cmdline],y
+          beq  :rts
+          iny
+          cmp  #' '+1
+          bcc  ]loop
+* bra :err
+
+:err
+          plp
+          sec
+          rts
+
+:eol
+          txa
+          sta  input
+
+:rts      plp
+          clc
+          rts
 
 
 * globals
 
+
+direct_page dw 0            ; must be global...
 
 hash_handle dl 0
 hash_count dw  0
@@ -748,5 +1090,15 @@ hash      dw   0
 flags     dw   0
 name      ds   name_size
 * err (*-node)-node_size
+
+
+
+input     ds   1+MAX_PATH
+buffer    ds   1024
+
+
+
+
+
 
           sav  macgen.1.l

@@ -18,6 +18,8 @@ FLAG_PMC  equ  4
 FLAG_PUT  equ  5
 
 
+MAX_PATH  equ  127
+
 node_size equ  36
 name_size equ  32
 
@@ -28,18 +30,20 @@ line_rtn  dw   0
 
 myID      dw   0
 
+cmdline   dl   0
 
 table     dl   0
 index     dw   0
 
 line      dl   0
 
-line_start dw 0
-line_end dw 0
+line_start dw  0
+line_end  dw   0
 
 
 
 ptr       dl   0
+dcb       dl   0
 
 
 r0        dw   0
