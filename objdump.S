@@ -429,7 +429,7 @@ relocs
 :9
           ~QAPrByteL reloc+1
           ~QADrawChar #$2c
-          ldy  reloc+3
+          lda  reloc+3
           and  #$00ff
           pha
           _QAPrByte
@@ -444,6 +444,7 @@ relocs
           ~QADrawChar #$2c
           ldy  reloc+1
           lda  [objptr],y
+          xba ; of course....
           jsr  PrWord_8000
 *          pha
 *          _QAPrByteL
@@ -455,7 +456,7 @@ relocs
 :b
           ~QAPrByteL reloc+1
           ~QADrawChar #$2c
-          ldy  reloc+3
+          lda  reloc+3
           and  #$00ff
           pha
           _QAPrByte
@@ -488,10 +489,7 @@ relocs
 
           ~QADrawStr #:err
 
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
+          ~QAPrByteL reloc+1
           lda  #0
           rts
 
