@@ -25,6 +25,8 @@
           ext  buffer
 
           ent  process_src
+          ent  do_operand_pmc
+          ent  next_line
 
 *
 * this scans the file and adds an entry for any encountered macros
@@ -41,7 +43,6 @@ operand_size equ 64
 label     ds   label_size
 operand   ds   operand_size
 
-input     str  'test.s'     ; ds 128
 
 
 

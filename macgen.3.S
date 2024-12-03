@@ -3,24 +3,61 @@
 * process a macro file, looking for macros that we care about.
 *
 *
+
+	  lst  off
+          xc
+          xc
+          mx   %00
+          cas  se
+
+          rel
+
+          use  macgen.equ
+          use  macgen.macs
+
           ent  process_mac_dir
           ext  do_opcode
           ext  do_label
+          ext  do_operand_pmc
+          ext  next_line
+
           ext  find_entry
           ext  insert_entry
           ext  update_entry
+          ext  emplace_entry
+          ext  buffer
+          ext  input
+          ext  process_dir
+          ext  label,operand,name,flags
 
 inmac     dw   0
 missing   dw   0
+pass      dw   0
 
 process_mac_dir
 * scan macro files in 4:
 * scan twice to resolve dependencies.
 
-          stz  :pass
+          stz  pass
+          stz  inmac
+          stz  missing
 
           lda  #process_mac_line-1
           sta  line_rtn
+
+
+          lda  :4
+          sta  input
+          lda  :4+2
+          sta  input+2
+          lda  :4+4
+          sta  input+4
+          jsr  process_dir
+          rts
+
+
+
+:4        strl '4:'
 
 
 process_mac_line
@@ -30,7 +67,7 @@ process_mac_line
           stz  operand
           stz  flags
 
-          sty  :line_start
+          sty  line_start
 
           sep  #$20
           jsr  do_label
@@ -40,7 +77,7 @@ process_mac_line
 
           sty  :save_y      ; for pmc...
           jsr  next_line    ; just get it now...
-          sty  :line_end
+          sty  line_end
 
 * if we're not in a macro we care about, just check for 'mac'...
           rep  #$20
@@ -48,14 +85,14 @@ process_mac_line
           bmi  :lookup
 
           lda  name
-          cmp  #$036d       ; 03 'm'
+          cmp  #'m'*256+3   ; 03 'm'
           bne  :nmac
           lda  name+2
-          cmp  #$6361
+          cmp  #'ca'
           bne  :nmac
           jmp  :mac
 :nmac
-          ldy  :line_end
+          ldy  line_end
           rts
 
 :lookup
@@ -68,8 +105,7 @@ process_mac_line
           tax
           jmp  (:table,x)
 :table    dw   :unk,:instr,:mac,:eom,:pmc,:put
-:line_start dw 0
-:line_end dw   0
+:save_y dw 0
 
 :eof
           rts
@@ -85,7 +121,7 @@ process_mac_line
           inc  missing
           jmp  append_line
 
-*:igmiss ldy :line_end
+*:igmiss ldy line_end
 * rts
 
 :unk                        ; previously seen macro
@@ -95,7 +131,7 @@ process_mac_line
 * rep #$20
 * bit inmac
 * bmi append_line
-* ldy :line_end
+* ldy line_end
 * rts
 
 :pmc                        ; this needs to parse out operand to get the macro name in case it's a dependency....
@@ -113,7 +149,7 @@ process_mac_line
 :pmcapp   jmp  append_line
 
 *:igpmc
-* ldy :line_end
+* ldy line_end
 * rts
 
 
@@ -123,7 +159,7 @@ process_mac_line
           stz  inmac
           jmp  append_line
 * bmi append_line
-* ldy :line_end
+* ldy line_end
 * rts
 
 :mac
@@ -137,7 +173,7 @@ process_mac_line
           jsr  find_entry
           bcc  :addmac
 :nomac
-          ldy  :line_end
+          ldy  line_end
           rts
 
 :addmac
@@ -150,9 +186,9 @@ process_mac_line
 * drop through....
 
 append_line
-          lda  :line_end
+          lda  line_end
           sec
-          sbc  :line_start
+          sbc  line_start
           clc
           adc  offset
           cmp  #512
@@ -163,11 +199,11 @@ append_line
           stz  offset
 
 
-]ok
+:ok
 
 
           sep  #$20
-          ldy  :line_start
+          ldy  line_start
           ldx  offset
 
 ]loop     lda  [fptr],y
@@ -175,16 +211,15 @@ append_line
           sta  buffer,x
           inx
           iny
-          cpy  :line_end
+          cpy  line_end
           bcc  ]loop
           stx  offset
 
 
 
-          ldy  :line_end
+          ldy  line_end
           rts
 
 
 offset    dw   0
-buffer    ds   512
 
