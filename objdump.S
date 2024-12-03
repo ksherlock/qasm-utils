@@ -32,6 +32,18 @@ reloc     ds   8
 
 
 r0        ds   2
+
+
+
+offset    ds   2
+reference ds   4
+size      ds   2
+shift     ds   2
+msg       ds   2
+ext       ds   2
+extoff    ds   2
+inline    ds   4
+
           dend
 
 main
@@ -103,8 +115,9 @@ getopt
 
 :eol
           rep  #$20
-          sec
-          rts
+          jmp  help
+*          sec
+*          rts
 
           mx   %10
 :eop
@@ -115,6 +128,11 @@ getopt
           rts
 
 
+help
+          ~QADrawErrStr #:msg
+          sec
+          rts
+:msg      str  'Usage: dumpobj file.l',0d
 
 
 
@@ -129,9 +147,37 @@ loadfile
           bne  :err_file_type
           lda  info_eof+2
           cmp  #2
-          bcs  :err_too_big
+          bcc  :ok
+
+:err_file_type
+:err_too_big
+          ~QADrawErrStrL #input
+          ~QADrawErrStr #:badft
+          sec
+          rts
 
 
+:err_toolbox
+          pha
+:etb2     ~QADrawErrStrL #input
+          ~QADrawErrStr #:cosp
+          _QAErrorMsg
+          sec
+          rts
+
+:err_toolbox_xba
+          pha
+          lda  input
+          xba
+          sta  input
+          bra  :etb2
+
+
+:cosp     str  ': '
+:badft    str  ': Invalid REL file',0d
+
+
+:ok
 
 * _QALoadFile expects a p-string
           lda  input
@@ -152,7 +198,7 @@ loadfile
           stx  handle
           plx
           stx  handle+2
-          bcs  :err_toolbox
+          bcs  :err_toolbox_xba
 
           lda  [handle]
           sta  objptr
@@ -169,11 +215,6 @@ loadfile
           clc
           rts
 
-:err_file_type
-:err_too_big
-:err_toolbox
-          sec
-          rts
 
 
 PrWord_8000
@@ -183,6 +224,53 @@ PrWord_8000
           pha
           _QAPrByteL
           rts
+
+
+print_ref
+          bit  ext
+          bmi  :ext
+          ~QADrawChar #'$'
+          ~QAPrByteL reference
+          rts
+:ext
+* print as external # +/- offset
+
+	~QADrawDec reference;#0;#0
+	lda inline
+	ora inline+2
+	bne :adj
+	rts
+:adj
+	lda size
+	asl
+	tax
+	jmp (:table,x)
+:table  dw :0,:1,:2,:3,:4
+:1
+	lda inline
+	and #$0080
+	beq :plus
+	ora #$ff00
+	sta inline
+	lda #-1
+	sta inline+2
+:minus
+	~QADrawDec inline;#%1_00_0_0000_0000_0000;0 ; signed
+	rts
+:2
+:3
+:4
+	lda inline+2
+	bmi :minus
+
+:plus
+	~QADrawChar #'+'
+	~QADrawDec inline;#%0_00_0_0000_0000_0000;0 ; unsigned
+	rts
+
+:0
+          rts
+
 
 
 relocs
@@ -209,8 +297,22 @@ relocs
           lda  #0
           adc  ptr+2
           sta  ptr+2
+          _QADrawCR
           clc
           rts
+
+
+*
+* format:
+* offset reference size shift comment raw bytes
+* 1234   5678   01    00           xx xxxx xx
+
+
+*
+* todo -- external labels may have an adjustment, which is stored in-line
+* eg, dw ''
+*
+
 
 :ok
           iny
@@ -219,7 +321,85 @@ relocs
           sta  reloc+2
           iny
           iny
-          sty  :y
+
+          lda  :op
+          cmp  #$ff         ; extended shift?
+          bne  :ok2
+
+          lda  [ptr],y
+          iny
+          iny
+          sta  reloc+4
+          lda  [ptr],y
+          iny
+          iny
+          sta  reloc+6
+
+:ok2      sty  :y
+
+
+          lda  reloc+1
+          sta  offset
+          stz  reference+2
+          stz  ext
+          stz  extoff
+          stz  extoff+2
+
+          ldy  reloc+1
+          lda  [objptr],y
+          sta  inline
+          iny
+          iny
+          lda  [objptr],y
+          sta  inline+2
+
+
+* assume external, fixed later.
+          lda  reloc+3
+          and  #$00ff
+          sta  reference
+
+          lda  :op
+          bit  #$10
+          beq  :disp
+          sec
+          ror  ext
+:disp
+          and  #$00f0
+          lsr
+          lsr
+          lsr
+          tax
+          lda  :size,x
+          sta  size
+          lda  :shift,x
+          sta  shift
+          jsr  (:table,x)
+          jcs  :dump
+
+          ~QADrawChar #'$'
+          ~QAPrByteL offset
+          _QADrawSpace
+          jsr print_ref
+          ~QATabToCol #20
+
+          ~QAPrNibble size
+          _QADrawSpace
+          pea 0
+          pei shift
+          pea #%0_10_0_0000_0000_0000
+          pea 2
+          _QADrawDec
+*          ~QAPrByte shift
+          lda  msg
+          beq  :dump
+          pea  #^*
+          pha
+          ~QATabToCol #30
+          _QADrawString
+
+:dump
+          ~QATabtoCol #48
 
           lda  reloc
           and  #$00ff
@@ -237,20 +417,9 @@ relocs
 
           lda  :op
           cmp  #$ff
-          bne  :dispatch
+          bne  :cr
 
 * extended shift
-          ldy  :y
-          lda  [ptr],y
-          sta  reloc+4
-          iny
-          iny
-          lda  [ptr],y
-          sta  reloc+6
-          iny
-          iny
-          sty  :y
-
           _QADrawSpace
           lda  reloc+4
           and  #$00ff
@@ -267,31 +436,18 @@ relocs
           pea  %0_10_1_0000_0000_0000 ; right justified, 0-filled
           pea  6            ; field size
           _QADrawHex
-
-:dispatch
-          ~QATabtoCol #24
-          lda  :op
-          and  #$00f0
-          lsr
-          lsr
-          lsr
-          tax
-          jsr  (:table,x)
-          cmp  #0
-          beq  :cr
-          pea  #^*
-          pha
-          ~QATabToCol #48
-          _QADrawString
-:cr       _QADrawCR
+:cr
+          _QADrawCR
           ldy  :y
           brl  ]loop
-
 
 
 :table
           dw   :0,:1,:2,:3,:4,:5,:6,:7
           dw   :8,:9,:a,:b,:c,:d,:e,relocf
+
+:size     dw   1,1,3,3,1,0,0,0,2,2,2,2,0,0,0,0
+:shift    dw   0,0,0,0,8,0,0,0,0,0,0,0,0,0,0,0
 
 
 :y        ds   2
@@ -313,88 +469,79 @@ relocs
 :bad_str  str  'Invalid relocation type: $'
 
 
+inline1   mac
+          stz  inline+1
+          stz  inline+2
+          eom
+
+inline2   mac
+          sec
+          lda  inline
+          sbc  #$8000
+          sta  inline
+          lda  #0
+          sbc  #0
+          sta  inline+2
+          eom
+
+inline3   mac
+          sec
+          lda  inline
+          sbc  #$8000
+          sta  inline
+          lda  inline+2
+          and  #$00ff
+          sbc  #0
+          sta  inline+2
+          eom
+
+inline4   mac
+          sec
+          lda  inline
+          sbc  #$8000
+          sta  inline
+          lda  inline+2
+          sbc  #0
+          sta  inline+2
+          eom
+
+
+
 * $0f - 1 byte relocation
-:0
-* address
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
-          lda  #:0s
-          rts
-
-:0s       str  '[1-byte reloc]'
-
 * $1f - 1 byte relocation (external)
+:0
 :1
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
-
-          lda  #:1s
+          inline1
+          clc
           rts
-
-:1s       str  '[1-byte reloc, external]'
 
 * $2f - 3 byte relocation
 :2
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          ldy  reloc+1
-          lda  [objptr],y
-          jsr  PrWord_8000
-*          sta  reloc+4
-*          iny
-*          iny
-*          lda  [objptr],y
-*          and  #$00ff
-*          sta  reloc+6
-
-*          ~QADrawHex reloc+4;#%0_10_1_0000_0000_0000;#6
-          lda  #:02s
+          inline3           ; can't actually be 3 bytes
+          lda  inline
+          sta  reference
+          clc
           rts
-:02s      str  '[3-byte reloc]'
 
 * $3f - 3 byte relocation (external)
 :3
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
-
-          lda  #:03s
+          inline3
+          clc
           rts
-:03s      str  '[3-byte reloc, external]'
 
 * $4f - 1 byte reloc w/ 8 bit shift
 * eg: mx %11 / ldx  #>internal
+* address is split
 :4
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          ~QADrawChar #'>'
-          ldy  reloc+1
-          lda  [objptr],y
+          lda  inline
           and  #$00ff
+          eor  #$0080
+          xba
+          tsb  reference
+          stz  inline
+          stz  inline+2
           clc
-          adc  #$ff80
-          pha
-          _QAPrByte
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
-          lda  #:4s
           rts
-
-
-:4s       str  '[1-byte reloc, 8-bit shift]'
 
 * $5f - ???
 :5
@@ -413,54 +560,40 @@ relocs
 
 * $8f - 2 byte relocation
 :8
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          ldy  reloc+1
-          lda  [objptr],y
-          jsr  PrWord_8000
-*          pha
-*          _QAPrByteL
-          lda  #:8s
+          inline2
+          lda  inline
+          sta  reference
+          clc
           rts
-
-:8s       str  '[2-byte reloc]'
 
 * $9f - 2 byte relocation (external)
 :9
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
-          lda  #:9s
+          inline2
+          clc
           rts
-
-:9s       str  '[2-byte reloc, external]'
 
 * $af - ddb
 :a
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          ldy  reloc+1
-          lda  [objptr],y
-          xba ; of course....
-          jsr  PrWord_8000
-*          pha
-*          _QAPrByteL
+          lda  inline
+          xba
+          eor  #$8000
+          sta  reference
           lda  #:as
+          sta  msg
+          clc               ; abnormal
           rts
 :as       str  '[ddb]'
 
 * $bf - ddb (external
 :b
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
+          lda  inline
+          xba
+          eor  #$8000
+          sta  inline
+          stz  inline+2
           lda  #:bs
+          sta  msg
+          clc
           rts
 :bs       str  '[ddb, external]'
 
@@ -474,9 +607,9 @@ relocs
           pha
           _QAPrByte
 
-          lda  #0
+          sec
           rts
-:ds       str  'DS \,$'
+:ds       str  'DS \,'
 
 
 * $df - ???
@@ -490,18 +623,15 @@ relocs
           ~QADrawStr #:err
 
           ~QAPrByteL reloc+1
-          lda  #0
+          sec
           rts
 
-:err      str  'ERR \,$'
+:err      str  'ERR \,'
           rts
 
 * $ff - extended shift
 relocf
-
-          ~QAPrByteL reloc+1
-          ~QADrawChar #$2c
-
+          stz  ext
           lda  reloc+4
           and  #$00f8
           cmp  #$d0
@@ -519,91 +649,82 @@ relocf
 
 * $ff d0 - 16-bit, 1-byte shift
 :0
-          ~QADrawChar #'^'
-          lda  reloc+5
-          jsr  PrWord_8000
-*          lda  reloc+7
-*          and  #$00ff
-*          pha
-*          pei  reloc+5
-*          pea  #%0_10_1_0000_0000_0000
-*          pea  6
-*          _QADrawHex
+          lda  #16
+          sta  shift
+          lda  #1
+          sta  size
 
-          lda  #:0s
+          lda  reloc+5
+          eor  #$8000
+          sta  reference
+          clc
           rts
-:0s       str  '[1-byte reloc, 16-bit shift]'
 
 :4
-          ~QADrawChar #'^'
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
+          lda  #16
+          sta  shift
+          lda  #1
+          sta  size
 
-          lda  #:4s
+          inline1
+
+          sec
+          ror  ext
+          clc
           rts
-:4s       str  '[1-byte reloc, 16-bit shift, external]'
-
 
 
 * $ff d1 - 8-bit, 2-byte shift
 :1
-          ~QADrawChar #'>'
+          lda  #8
+          sta  shift
+          lda  #2
+          sta  size
+
           lda  reloc+5
-          jsr  PrWord_8000
-
-*          lda  reloc+7
-*          and  #$00ff
-*          pha
-*          pei  reloc+5
-*          pea  #%0_10_1_0000_0000_0000
-*          pea  6
-*          _QADrawHex
-
-          lda  #:1s
+          eor  #$8000
+          sta  reference
+          clc
           rts
-:1s       str  '[2-byte reloc, 8-bit shift]'
 
 :5
-          ~QADrawChar #'>'
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
+          lda  #8
+          sta  shift
+          lda  #2
+          sta  size
 
-          lda  #:5s
+          inline2
+          sec
+          ror  ext
+          clc
           rts
-:5s       str  '[2-byte reloc, 8-bit shift, external]'
 
 
-* $ff d1 - 8-bit, 2-byte shift
+* $ff d3 - 8-bit, 1-byte shift
 :3
-          ~QADrawChar #'>'
-          lda  reloc+5
-          jsr  PrWord_8000
-*          lda  reloc+7
-*          and  #$00ff
-*          pha
-*          pei  reloc+5
-*          pea  #%0_10_1_0000_0000_0000
-*          pea  6
-*          _QADrawHex
+          lda  #8
+          sta  shift
+          lda  #1
+          sta  size
 
-          lda  #:3s
+          lda  reloc+5
+          eor  #$8000
+          sta  reference
+          clc
           rts
-:3s       str  '[1-byte reloc, 8-bit shift]'
 
 :7
-          ~QADrawChar #'>'
-          lda  reloc+3
-          and  #$00ff
-          pha
-          _QAPrByte
+          lda  #8
+          sta  shift
+          lda  #1
+          sta  size
 
-          lda  #:7s
+          inline1
+          sec
+          ror  ext
+          clc
           rts
-:7s       str  '[1-byte reloc, 8-bit shift, external]'
+
 
 
 :2
@@ -674,32 +795,40 @@ labels
           lda  :op
           bit  #$20
           bne  :equ
-          bit   #$80
+          bit  #$80
           beq  :ent
 :ext
-          _QADrawSpace
-          _QADrawSpace
+*          _QADrawSpace
+*          _QADrawSpace
 
 * ext are $8000, exd is not.
 * only 256 externals allowed so they can't overflow...
+
+	  pea 0
           lda  :value
+          and #$00ff
+          pha
+          pea #%0_10_0_0000_0000_0000
+          pea 7
+          _QADrawDec
+
+          lda :value
           bpl  :exd
-          jsr  PrWord_8000
           lda  #:extstr
           bra  :prname
 :exd
-	  ~QAPrByteL :value
           lda  #:exdstr
           bra  :prname
 :ent
           _QADrawSpace
           _QADrawSpace
-          lda :value
+          ~QADrawChar #'$'
+          lda  :value
           jsr  PrWord_8000
           lda  #:entstr
           bra  :prname
 
-:equ      ~QADrawHex :value;#%0_10_1_0000_0000_0000;#6
+:equ      ~QADrawHex :value;#%0_10_1_1000_0000_0000;#7
           lda  #:equstr
 
 :prname
