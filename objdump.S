@@ -9,6 +9,19 @@
           use  qatools.macs
 
 
+debug     mac
+          brl  eom
+          dw   $7771
+          str  ]1
+eom       eom
+
+
+_SetTrace mac
+          ldx  #$11ff
+          jsl  $e10000
+          eom
+
+
 readEnable equ $0001
 writeEnable equ $0002
 
@@ -26,6 +39,8 @@ objptr    ds   4
 
 handle    ds   4
 
+names     ds   4
+nptr      ds   4
 
 
 reloc     ds   8
@@ -44,6 +59,8 @@ ext       ds   2
 extoff    ds   2
 inline    ds   4
 
+
+          err  *>255
           dend
 
 main
@@ -59,6 +76,9 @@ main
 
           jsr  loadfile
           bcs  :err
+
+
+          jsr  scan_names
 
           jsr  relocs
           bcs  :disp
@@ -235,38 +255,60 @@ print_ref
 :ext
 * print as external # +/- offset
 
-	~QADrawDec reference;#0;#0
-	lda inline
-	ora inline+2
-	bne :adj
-	rts
+          lda  reference
+          jsr  print_name
+* ~QADrawDec reference;#0;#0
+          lda  inline
+          ora  inline+2
+          bne  :adj
+          rts
 :adj
-	lda size
-	asl
-	tax
-	jmp (:table,x)
-:table  dw :0,:1,:2,:3,:4
+          lda  size
+          asl
+          tax
+          jmp  (:table,x)
+:table    dw   :0,:1,:2,:3,:4
 :1
-	lda inline
-	and #$0080
-	beq :plus
-	ora #$ff00
-	sta inline
-	lda #-1
-	sta inline+2
+          lda  inline
+          and  #$0080
+          beq  :plus
+          ora  #$ff00
+          sta  inline
+          lda  #-1
+          sta  inline+2
 :minus
-	~QADrawDec inline;#%1_00_0_0000_0000_0000;0 ; signed
-	rts
+* for large values, display in hex
+	  lda inline+2
+	  cmp #$ffff
+	  bne :mihex
+	  lda inline
+	  cmp #-255
+	  bcc :mihex
+          ~QADrawDec inline;#%1_00_0_0000_0000_0000;0 ; signed
+          rts
+
+:mihex
+	  ~QADrawHex inline;#%1_00_0_1_000_0000_0000;0
+	  rts
 :2
 :3
 :4
-	lda inline+2
-	bmi :minus
+          lda  inline+2
+          bmi  :minus
 
 :plus
-	~QADrawChar #'+'
-	~QADrawDec inline;#%0_00_0_0000_0000_0000;0 ; unsigned
-	rts
+* for large values, display in hex
+          ~QADrawChar #'+'
+	  lda inline+2
+	  bne :plhex
+	  lda inline
+	  cmp #255
+	  bcs :plhex
+          ~QADrawDec inline;#%0_00_0_0000_0000_0000;0 ; unsigned
+          rts
+:plhex
+	  ~QADrawHex inline;#%0_00_0_1_000_0000_0000;0
+          rts
 
 :0
           rts
@@ -380,26 +422,26 @@ relocs
           ~QADrawChar #'$'
           ~QAPrByteL offset
           _QADrawSpace
-          jsr print_ref
-          ~QATabToCol #20
+          jsr  print_ref
+          ~QATabToCol #30
 
           ~QAPrNibble size
           _QADrawSpace
-          pea 0
-          pei shift
-          pea #%0_10_0_0000_0000_0000
-          pea 2
+          pea  0
+          pei  shift
+          pea  #%0_10_0_0000_0000_0000
+          pea  2
           _QADrawDec
 *          ~QAPrByte shift
           lda  msg
           beq  :dump
           pea  #^*
           pha
-          ~QATabToCol #30
+          ~QATabToCol #40
           _QADrawString
 
 :dump
-          ~QATabtoCol #48
+          ~QATabtoCol #50
 
           lda  reloc
           and  #$00ff
@@ -804,15 +846,15 @@ labels
 * ext are $8000, exd is not.
 * only 256 externals allowed so they can't overflow...
 
-	  pea 0
+          pea  0
           lda  :value
-          and #$00ff
+          and  #$00ff
           pha
-          pea #%0_10_0_0000_0000_0000
-          pea 7
+          pea  #%0_10_0_0000_0000_0000
+          pea  7
           _QADrawDec
 
-          lda :value
+          lda  :value
           bpl  :exd
           lda  #:extstr
           bra  :prname
@@ -852,6 +894,145 @@ labels
 :extstr   str  '  EXT '
 :exdstr   str  '  EXD '
 *****
+
+
+print_name
+          debug 'print_name'
+
+
+* a = external name
+          tay               ; save in case of failure...
+          asl
+          tax
+          lda  name_index,x
+
+          bne  :ok
+          pea  0
+          phy
+          pea  0
+          pea  0
+          _QADrawDec
+
+
+          pha
+          pea 0
+          _SetTrace
+          pla
+
+          rts
+
+:ok
+	  and #$7fff
+          clc
+          adc  names
+          sta  nptr
+          lda  #0
+          adc  names+2
+          sta  nptr+2
+
+          lda  #0
+          sep  #$20
+          lda  [nptr]
+          and  #$1f
+          cmp  #15
+          php
+          bcc  :copy
+          lda  #15
+:copy
+          sta  :name
+          tay
+]loop     lda  [nptr],y
+          sta  :name,y
+          dey
+          bne  ]loop
+
+          plp
+          bcc  :print
+          lda  #'.'
+          sta  :name+15
+          sta  :name+14
+          sta  :name+13
+:print
+          rep  #$20
+          ~QADrawStr #:name
+
+          rts
+
+:name     ds   32
+
+scan_names
+          debug 'scan_names'
+
+
+          ldx  #256*2-2
+]loop     stz  name_index,x
+          dex
+          dex
+          bpl  ]loop
+
+          ldy  #0
+
+]loop     lda  [ptr],y
+          iny
+          and  #$ff         ; extended shift byte 5 will never be 0 so this works
+          beq  :endr
+          iny
+          iny
+          iny
+          bra  ]loop
+
+:endr
+          tya
+          clc
+          adc  ptr
+          sta  names
+          lda  #0
+          adc  ptr+2
+          sta  names+2
+
+* now build up a table
+          ldy  #0
+]loop     lda  [names],y
+          and  #$00ff
+          beq  :end
+          sty  r0
+          bit  #$80
+          beq  :no
+
+          and  #$1f
+          clc
+          adc  r0
+          tay
+          iny
+          lda  [names],y
+          and  #$00ff
+          asl
+          tax
+          lda  r0
+          ora #$8000
+          sta  name_index,x
+          iny
+          iny
+          iny
+          bra  ]loop
+
+:no       and  #$1f
+          clc
+          adc  r0
+          adc  #4 ; length + 3 value bytes
+          tay
+          bra  ]loop
+
+:end      
+
+
+	rts
+
+
+
+name_index ds  256*2
+
+
 
 info
 info_pCount dw 9
