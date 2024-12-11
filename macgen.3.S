@@ -4,7 +4,7 @@
 *
 *
 
-	  lst  off
+          lst  off
           xc
           xc
           mx   %00
@@ -19,7 +19,6 @@
           ext  do_opcode
           ext  do_label
           ext  do_operand_pmc
-          ext  next_line
 
           ext  find_entry
           ext  insert_entry
@@ -62,22 +61,21 @@ process_mac_dir
 
 process_mac_line
 
-          stz  label
-          stz  name
-          stz  operand
-          stz  flags
+          mx   %10
+          ldx  #0
+          stx  label
+          stx  name
+          stx  operand
+          stx  flags
 
-          sty  line_start
+          txa
 
-          sep  #$20
           jsr  do_label
           bcs  :eof         ; can skip the entire line
           jsr  do_opcode
           bcs  :instr       ; was a label so we might need to copy it.
 
-          sty  :save_y      ; for pmc...
-          jsr  next_line    ; just get it now...
-          sty  line_end
+          sty  y_save      ; for pmc...
 
 * if we're not in a macro we care about, just check for 'mac'...
           rep  #$20
@@ -92,7 +90,6 @@ process_mac_line
           bne  :nmac
           jmp  :mac
 :nmac
-          ldy  line_end
           rts
 
 :lookup
@@ -105,41 +102,29 @@ process_mac_line
           tax
           jmp  (:table,x)
 :table    dw   :unk,:instr,:mac,:eom,:pmc,:put
-:save_y dw 0
 
 :eof
           rts
 
 :missing
 * opcode not in table - treat it as a macro dependency.
-* bit inmac
-* bpl :igmiss
 
           lda  #%1000_0000_0000_0000
           sta  flags
           jsr  emplace_entry
           inc  missing
-          jmp  append_line
+*          jmp  append_line ; drop through...
 
-*:igmiss ldy line_end
-* rts
 
 :unk                        ; previously seen macro
 :instr
 :put
           jmp  append_line
-* rep #$20
-* bit inmac
-* bmi append_line
-* ldy line_end
-* rts
 
 :pmc                        ; this needs to parse out operand to get the macro name in case it's a dependency....
           mx   %00
-* bit inmac
-* bpl :igpmc
           sep  #$20
-          ldy  :save_y
+          ldy  y_save
           jsr  do_operand_pmc
           rep  #$20
           bcs  :pmcapp      ; no operand????
@@ -148,19 +133,11 @@ process_mac_line
           jsr  insert_entry
 :pmcapp   jmp  append_line
 
-*:igpmc
-* ldy line_end
-* rts
-
 
 :eom
           mx   %00
-* bpl inmac
           stz  inmac
           jmp  append_line
-* bmi append_line
-* ldy line_end
-* rts
 
 :mac
 * check if the label is needed
@@ -173,7 +150,6 @@ process_mac_line
           jsr  find_entry
           bcc  :addmac
 :nomac
-          ldy  line_end
           rts
 
 :addmac
@@ -200,8 +176,6 @@ append_line
 
 
 :ok
-
-
           sep  #$20
           ldy  line_start
           ldx  offset
@@ -215,9 +189,6 @@ append_line
           bcc  ]loop
           stx  offset
 
-
-
-          ldy  line_end
           rts
 
 

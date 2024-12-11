@@ -5,11 +5,11 @@ utool     mac
           <<<
 
 
-debug   mac
-        brl eom
-        dw $7771
-        str ]1
-eom        eom
+debug     mac
+          brl  eom
+          dw   $7771
+          str  ]1
+eom       eom
 
 _QADrawString mac           ;_QADrawString(@strptr)
 _QADrawStr mac
@@ -28,38 +28,40 @@ _QALoadFile mac             ;_QALoadfile(@filename,filepos/4,length/4,@typelist,
           utool $18
           <<<
 
-~QAReadDir      MAC
-        phl     ]1
-        phl     ]2
-        phw     ]3
-_QAReadDir      mac             ;_QAReadDir(@pathname,@doroutine,flags)
-        utool   $39
-        <<<
+~QAReadDir MAC
+          phl  ]1
+          phl  ]2
+          phw  ]3
+_QAReadDir mac              ;_QAReadDir(@pathname,@doroutine,flags)
+          utool $39
+          <<<
 
 
 ~QAGetCmdLine MAC
-          psl  ]1
-          psw  ]2
+          phl  ]1
+          phw  ]2
 _QAGetCmdLine mac           ;_QAGetCmdLine(@strptr,maxlen)
           utool $1B
           <<<
 
+~QADrawErrStr MAC
+          phl  ]1
 _QADrawErrStr mac
 _QADrawErrString mac        ;_QADrawErrString(@strptr)
           utool $52
           <<<
 
 ~QAErrorMsg MAC
-          psw  ]1
+          phw  ]1
 _QAErrorMsg mac             ;_QAErrorMsg(ErrorCode)
           utool $34
           <<<
 
 
 _SetTrace mac
- ldx #$11ff
- jsl $e10000
- eom
+          ldx  #$11ff
+          jsl  $e10000
+          eom
 
 
 sev       mac

@@ -40,6 +40,7 @@ line      dl   0
 line_start dw  0
 line_end  dw   0
 
+y_save    dw   0
 
 
 ptr       dl   0

@@ -23,6 +23,7 @@
 
           ent  process_file
           ent  process_dir
+          ent  buffer
 
           ext  process_src
           ext  process_mac_dir
@@ -83,14 +84,22 @@ start
 
           jsr  process_src
 
+          do   0
+          pha
+          pea  #0
+          _SetTrace
+          pla
+          fin
+
+
           jsr  dump
-
-:exit
-          jsr  cleanup
           lda  #0
-          clc
+:exit
+          pha
+          jsr  cleanup
+          pla
+          cmp  #1
           rtl
-
 
 
 dump
@@ -827,10 +836,22 @@ txttypes  db   $02,$04,$B0
 
 call_line_rtn mac
 *          per  end-1  ; qasm bug
+          sep  #$20
+          sty  line_start
+          tyx               ; save
+loop      lda  [fptr],y
+          iny
+          and  #$7f
+          cmp  #$0d
+          bne  loop
+          sty  line_end
+          txy               ;restore
           pea  end-1
           pei  line_rtn
           rts
-end       eom
+end       rep  #$20
+          ldy  line_end
+          eom
 
 process_file
 * load
@@ -849,13 +870,12 @@ process_file
 
 ]loop0
           ldy  #0
-]loop     call_line_rtn
-          rep  #$20
-          tya
+]loop
+          call_line_rtn
           bpl  ]loop        ; since this is >= $01_0000, can't have eof in first $7fff bytes
 
 * adjust ptrs, jump to small if possible...
-
+          tya
           clc
           adc  fptr
           sta  fptr
@@ -878,7 +898,6 @@ process_file
 :small
           ldy  #0
 ]loop     call_line_rtn
-          rep  #$20
           cpy  fsize
           bcc  ]loop
 
@@ -1065,8 +1084,7 @@ getopt
 
 :err
           plp
-          sec
-          rts
+          jmp  help
 
 :eol
           txa
@@ -1075,6 +1093,14 @@ getopt
 :rts      plp
           clc
           rts
+
+help
+          mx   %00
+          ~QADrawErrStr #:msg
+          sec
+          lda  #1
+          rts
+:msg      str  'Usage: macgen srcfile.s',0d
 
 
 * globals

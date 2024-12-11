@@ -26,7 +26,6 @@
 
           ent  process_src
           ent  do_operand_pmc
-          ent  next_line
 
 *
 * this scans the file and adds an entry for any encountered macros
@@ -48,7 +47,7 @@ operand   ds   operand_size
 
 
 process_src
-	debug 'process_src'
+          debug 'process_src'
           lda  #process_src_line-1
           sta  line_rtn
           jmp  process_file
@@ -59,22 +58,21 @@ process_src
 
 process_src_line
 
-	debug 'process_src_line'
+          debug 'process_src_line'
 
 * input:
 * y: offset in fptr [start of line]
-* output:
-* y: offset in fptr [start of next line]
-* carry: set if $00 encountered
+* line_start, line_end variables set
 
-          stz  label
-          stz  name
-          stz  operand
-          stz  flags
+	  mx %10
 
-          lda  #0
-          ldx  #0
-          sep  #$20
+	  ldx  #0
+          stx  label
+          stx  name
+          stx  operand
+          stx  flags
+
+          txa ; 0s 16-bit a
 
           jsr  do_label
           bcs  :eof
@@ -82,14 +80,12 @@ process_src_line
           jsr  do_opcode
           bcs  :eof
 
-          sty  :y_temp      ; save
+          sty  y_save      ; save
           rep  #$20
           lda  #%1000_0000_0000_0000
           sta  flags
           jsr  insert_entry
           bcs  :known
-          ldy  :y_temp
-          jmp  next_line
 
 :eof      rts
 
@@ -102,12 +98,10 @@ process_src_line
           tax
           jmp  (:table,x)
 :table    dw   :none,:none,:mac,:eom,:pmc,:put
-:y_temp   dw   0
 
 :none
 :eom
-          ldy  :y_temp
-          jmp  next_line
+          rts
 
           lst  on
 :mac
@@ -123,43 +117,28 @@ process_src_line
           ldx  #label
           ldy  #name
           mvn  #label,#name
-          jsr  insert_entry
+          jmp  insert_entry
 
-
-
-          bra  :none
           lst  off
-* ldy :y_temp
-* jmp next_line_mx
-
 :put
           mx   %00
-          ldy  :y_temp
+          ldy  y_save
           sep  #$20
-          jsr  do_operand
-* rep #$20
-* bcc :put1
-          rts
-*:put1
-* todo
-          rts
+          jmp  do_operand_path
 
-* not strictly correct; consider pmc lda
+* not strictly correct; consider " pmc lda" - this would be a macro named lda.
 :pmc
           mx   %00
-          ldy  :y_temp
+          ldy  y_save
           sep  #$20
           jsr  do_operand_pmc ; load macro into name
-          bcc  :pmc1
-:rts      rts
-:pmc1
-          phy               ; save
+          bcs  :pmc_rts
+
           rep  #$20
           lda  #%1000_0000_0000_0000
           sta  flags
-          jsr  insert_entry
-          ply               ; restore
-          rts
+          jmp  insert_entry
+:pmc_rts  rts
 
 do_label
 * loads label
@@ -201,7 +180,6 @@ do_label
           bra  ]loop
 
 :comment
-          jsr  next_line
 :cr       sec
           rts
 :fin
@@ -247,7 +225,6 @@ do_opcode
           bra  ]loop
 
 :comment
-          jsr  next_line
 :cr       sec
           rts
 
@@ -296,12 +273,10 @@ do_operand
           bra  ]loop
 
 :comment
-          jsr  next_line
 :cr       sec
           rts
 
 :fin
-          jsr  next_line
 :fincr
           clc
           rts
@@ -350,35 +325,61 @@ do_operand_pmc
           bra  ]loop
 
 :comment
-          jsr  next_line
 :cr       sec
           rts
 
 :fin
-          jsr  next_line
 :fincr
           clc
           rts
 
 
-next_line
-* advance to cr, then skip past it.
-          sep  #$20
-]loop     lda  [fptr],y
-* beq :eof
+do_operand_path
+*
+* operand is a path; stick it in the buffer so we can process it later.
+*
+
+	mx %10
+
+          ldx #0
+          stx operand
+
+* skip whitespace...
+]loop
+          lda  [fptr],y
           iny
-* beq :eof
           and  #$7f
           cmp  #$0d
-          bne  ]loop
-          clc
+          beq  :cr
+          cmp  #';'
+          beq  :comment
+          cmp  #' '+1
+          bcc  ]loop
+
+
+          dey
+]loop	  lda [fptr],y
+          iny
+          and  #$7f
+          cmp #' '+1
+          bcc :fin
+          sta operand+1,x
+          inc operand
+          inx
+*          cpx #operand_size-2
+          bra ]loop
+
+:comment
+:cr       sec
           rts
 
-*:eof sec
-* rep #$30
-* rts
+:fin
+* now but the name in the buffer to process later...
+	rep #$20
 
-
+	sep #$20
+	clc
+	rts
 
 
 
