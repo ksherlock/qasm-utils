@@ -263,56 +263,75 @@ print_ref
           bne  :adj
           rts
 :adj
-          lda  size
-          asl
-          tax
-          jmp  (:table,x)
-:table    dw   :0,:1,:2,:3,:4
-:1
-          lda  inline
-          and  #$0080
-          beq  :plus
-          ora  #$ff00
-          sta  inline
-          lda  #-1
-          sta  inline+2
+          lda  inline+2
+          bpl  :plus
+
 :minus
 * for large values, display in hex
-	  lda inline+2
-	  cmp #$ffff
-	  bne :mihex
-	  lda inline
-	  cmp #-255
-	  bcc :mihex
-          ~QADrawDec inline;#%1_00_0_0000_0000_0000;0 ; signed
+          lda  inline+2
+          cmp  #$ffff
+          bne  :mihex
+          lda  inline
+          cmp  #-255
+          bcc  :mihex
+          ~QADrawDec inline;#%1_00_0_0000_0000_0000;#0 ; signed
           rts
 
 :mihex
-	  ~QADrawHex inline;#%1_00_0_1_000_0000_0000;0
-	  rts
-:2
-:3
-:4
-          lda  inline+2
-          bmi  :minus
+          ~QADrawHex inline;#%1_00_0_1_000_0000_0000;#0
+          rts
+
+
 
 :plus
 * for large values, display in hex
           ~QADrawChar #'+'
-	  lda inline+2
-	  bne :plhex
-	  lda inline
-	  cmp #255
-	  bcs :plhex
-          ~QADrawDec inline;#%0_00_0_0000_0000_0000;0 ; unsigned
+          lda  inline+2
+          bne  :plhex
+          lda  inline
+          cmp  #255
+          bcs  :plhex
+          ~QADrawDec inline;#%0_00_0_0000_0000_0000;#0 ; unsigned
           rts
 :plhex
-	  ~QADrawHex inline;#%0_00_0_1_000_0000_0000;0
+          ~QADrawHex inline;#%0_00_0_1_000_0000_0000;#0
           rts
 
 :0
           rts
 
+
+ext1
+          lda  inline
+          bit  #$80
+          bmi  :minus
+          stz  inline+1
+          stz  inline+2
+          rts
+:minus
+          lda  #-1
+          sta  inline+1
+          sta  inline+2
+          rts
+ext2
+          lda  inline
+          bmi  :minus
+          sta  inline+2
+          rts
+:minus    lda  #-1
+          sta  inline+2
+          rts
+
+ext3
+          lda  inline+2
+          bit  #$80
+          bmi  :minus
+          and  #$00ff
+          sta  inline+2
+          rts
+:minus    ora  #$ff00
+          sta  inline+2
+          rts
 
 
 relocs
@@ -511,6 +530,9 @@ relocs
 :bad_str  str  'Invalid relocation type: $'
 
 
+
+
+
 inline1   mac
           stz  inline+1
           stz  inline+2
@@ -553,7 +575,8 @@ inline4   mac
 * $1f - 1 byte relocation (external)
 :0
 :1
-          inline1
+*          inline1
+          jsr  ext1
           clc
           rts
 
@@ -682,6 +705,34 @@ relocf
           brl  :bad_reloc
 :d0
           lda  reloc+4
+          bit  #$04
+          beq  :int
+* this is external... load the offset
+
+*          stz inline+2
+          lda  reloc+5
+          and  #$00ff
+          sta  inline
+          lda  reloc+6
+          sta  inline+1
+
+          lda  inline+2
+          and  #$00ff
+          bit  #$80
+          beq  :p
+          ora  #$ff00
+:p        sta  inline+2
+          inline4
+
+          sec
+          ror  ext
+          bra  :disp
+:int
+          lda  reloc+5
+          eor  #$8000
+          sta  reference
+:disp
+          lda  reloc+4
           and  #$000f
           asl
           tax
@@ -691,82 +742,38 @@ relocf
 
 * $ff d0 - 16-bit, 1-byte shift
 :0
-          lda  #16
-          sta  shift
-          lda  #1
-          sta  size
-
-          lda  reloc+5
-          eor  #$8000
-          sta  reference
-          clc
-          rts
-
 :4
           lda  #16
           sta  shift
           lda  #1
           sta  size
 
-          inline1
-
-          sec
-          ror  ext
           clc
           rts
 
 
 * $ff d1 - 8-bit, 2-byte shift
 :1
-          lda  #8
-          sta  shift
-          lda  #2
-          sta  size
-
-          lda  reloc+5
-          eor  #$8000
-          sta  reference
-          clc
-          rts
-
 :5
           lda  #8
           sta  shift
           lda  #2
           sta  size
 
-          inline2
-          sec
-          ror  ext
           clc
           rts
 
 
 * $ff d3 - 8-bit, 1-byte shift
 :3
-          lda  #8
-          sta  shift
-          lda  #1
-          sta  size
-
-          lda  reloc+5
-          eor  #$8000
-          sta  reference
-          clc
-          rts
-
 :7
           lda  #8
           sta  shift
           lda  #1
           sta  size
 
-          inline1
-          sec
-          ror  ext
           clc
           rts
-
 
 
 :2
@@ -915,14 +922,14 @@ print_name
 
 
           pha
-          pea 0
+          pea  0
           _SetTrace
           pla
 
           rts
 
 :ok
-	  and #$7fff
+          and  #$7fff
           clc
           adc  names
           sta  nptr
@@ -1009,8 +1016,13 @@ scan_names
           asl
           tax
           lda  r0
-          ora #$8000
+          ora  #$8000       ; since 0 is a valid offset
           sta  name_index,x
+
+          lda  [names],y
+          and  #$8000
+          sta  name_types,x ; $8000 indicates exd
+
           iny
           iny
           iny
@@ -1019,19 +1031,19 @@ scan_names
 :no       and  #$1f
           clc
           adc  r0
-          adc  #4 ; length + 3 value bytes
+          adc  #4           ; length + 3 value bytes
           tay
           bra  ]loop
 
-:end      
+:end
 
 
-	rts
+          rts
 
 
 
 name_index ds  256*2
-
+name_types ds  256*2
 
 
 info
