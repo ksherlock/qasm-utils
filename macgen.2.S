@@ -22,7 +22,7 @@
           ext  insert_entry
           ext  name,flags
           ext  process_file
-          ext  buffer
+          ext  buffer,input
 
           ent  process_src
           ent  do_operand_pmc
@@ -48,11 +48,64 @@ operand   ds   operand_size
 
 process_src
           debug 'process_src'
+
+          stz  buffer_offset
+          stz  pass
+
           lda  #process_src_line-1
           sta  line_rtn
-          jmp  process_file
+          jsr  process_file
+
+*
+* now repeat for all use/put files.
+*
+          ldx  buffer_offset
+          beq  :done
+          stz  buffer,x
+          lda  #$8080
+          sta  pass
+          stz  buffer_offset ; end when 0-terminated.
+]loop
+          ldx  buffer_offset
+          lda  buffer,x
+          and  #$ff
+          beq  :done
+
+          sta  r0
+          lda  #buffer
+          clc
+          adc  buffer_offset
+          tax
+          ldy  #input
+          lda  r0
+          mvn  #buffer,#input
+          lda  r0
+          clc
+          adc  buffer_offset
+          inc
+          sta  buffer_offset
+* append .S
+          ldx  r0
+          do   0
+          sep  #$20
+          lda  #'.'
+          sta  input+1,x
+          lda  #'S'
+          sta  input+2,x
+          inc  input
+          inc  input
+          rep  #$20
+          fin
+          lda  #'.s'
+          sta  input+1,x
+          inc  input        ; we're 16-bit but it's ok since < $fd bytes - no carry to second bit.
+          inc  input
+
+          jsr  process_file
+          bra  ]loop
 
 
+:done     rts
 
 
 
@@ -64,15 +117,15 @@ process_src_line
 * y: offset in fptr [start of line]
 * line_start, line_end variables set
 
-	  mx %10
+          mx   %10
 
-	  ldx  #0
+          ldx  #0
           stx  label
           stx  name
           stx  operand
           stx  flags
 
-          txa ; 0s 16-bit a
+          txa               ; 0s 16-bit a
 
           jsr  do_label
           bcs  :eof
@@ -80,7 +133,7 @@ process_src_line
           jsr  do_opcode
           bcs  :eof
 
-          sty  y_save      ; save
+          sty  y_save       ; save
           rep  #$20
           lda  #%1000_0000_0000_0000
           sta  flags
@@ -103,7 +156,6 @@ process_src_line
 :eom
           rts
 
-          lst  on
 :mac
 * define label as the macro
 
@@ -119,7 +171,6 @@ process_src_line
           mvn  #label,#name
           jmp  insert_entry
 
-          lst  off
 :put
           mx   %00
           ldy  y_save
@@ -290,6 +341,9 @@ do_operand_pmc
 * -- advances to next line --
 
           mx   %10
+          bit  pass
+          bmi  :fin
+
           ldx  #0
           stx  name
 
@@ -339,10 +393,16 @@ do_operand_path
 * operand is a path; stick it in the buffer so we can process it later.
 *
 
-	mx %10
+          mx   %10
 
-          ldx #0
-          stx operand
+          ldx  buffer_offset
+          cmp  #1024-128
+          bcs  :cr          ; not enough space...
+
+          ldx  #0
+          stz  operand
+
+
 
 * skip whitespace...
 ]loop
@@ -358,28 +418,61 @@ do_operand_path
 
 
           dey
-]loop	  lda [fptr],y
+]loop     lda  [fptr],y
           iny
           and  #$7f
-          cmp #' '+1
-          bcc :fin
-          sta operand+1,x
-          inc operand
+          cmp  #' '+1
+          bcc  :fin
+          sta  operand+1,x
+          inc  operand
           inx
-*          cpx #operand_size-2
-          bra ]loop
+          cpx  #operand_size-3 ; too big?
+          bcs  :cr
+          bra  ]loop
 
 :comment
 :cr       sec
           rts
 
 :fin
-* now but the name in the buffer to process later...
-	rep #$20
+* now put the name in the buffer to process later...
 
-	sep #$20
-	clc
-	rts
+
+* add the .S suffix
+
+          do   0
+          lda  #'.'
+          sta  operand+1,x
+          lda  #'S'
+          sta  operand+2,s
+          inc  operand
+          inc  operand
+          inx
+          inx
+          fin
+
+          rep  #$20
+
+* a = count,
+* x = src
+* y = dest
+          phx               ; save length
+          lda  buffer_offset
+          clc
+          adc  #buffer
+          tay
+          txa               ; size, w/o length byte
+          ldx  #operand     ; source
+          mvn  #operand,#buffer
+
+          pla               ; length
+          sec               ; +1 for length byte
+          adc  buffer_offset
+          sta  buffer_offset
+
+          sep  #$20
+          clc
+          rts
 
 
 

@@ -47,9 +47,12 @@ ptr       dl   0
 dcb       dl   0
 
 
-r0        dw   0
-r1        dw   0
-r2        dw   0
+buffer_offset dw 0
+pass      dw   0
+
+r0        dl   0
+r1        dl   0
+r2        dl   0
 
 
 fhandle   dl   0

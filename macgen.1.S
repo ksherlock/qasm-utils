@@ -23,7 +23,7 @@
 
           ent  process_file
           ent  process_dir
-          ent  buffer
+          ent  buffer,input
 
           ext  process_src
           ext  process_mac_dir
@@ -84,6 +84,12 @@ start
 
           jsr  process_src
 
+*          phl  #buffer
+*          phw  #1024
+*          _HexDump
+
+
+
           do   0
           pha
           pea  #0
@@ -125,6 +131,7 @@ dump
           iny
           iny
           lda  [table],y
+          sta  r0
           and  #$00ff
           bne  :ply         ; built-in
 * bit 15 indicates it's used
@@ -138,6 +145,20 @@ dump
 *   lda 1,s
 *          clc
 *          adc  #4
+
+          phy               ; save
+
+          lda  #'  '        ; ? is 0x3f, conveniently...
+          bit  r0
+*          bmi  :14
+*          ora  #' ?'
+:14       bvs  :pt
+          ora  #'? '
+:pt
+          sta  :tag+1
+          ~QADrawString #:tag
+
+          ply               ; restore
           iny
           iny
           tya
@@ -167,6 +188,7 @@ dump
 :eol
           rts
 
+:tag      str  '    '
 
 cleanup
           ~DisposeHandle hash_handle

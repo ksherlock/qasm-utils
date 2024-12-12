@@ -11,10 +11,13 @@ debug     mac
           str  ]1
 eom       eom
 
-_QADrawString mac           ;_QADrawString(@strptr)
-_QADrawStr mac
-          utool $0A
-          <<<
+~QADrawString	MAC
+~QADrawStr	MAC
+	phl	]1
+_QADrawString	mac		;_QADrawString(@strptr)
+_QADrawStr	mac
+	utool	$0A
+	<<<
 
 _QADrawCR mac               ;_QADrawCR()
           utool $63
@@ -105,5 +108,5 @@ lc        mac
           bcs  ok
           cmp  #'A'
           bcc  ok
-          ora  #$40
+          ora  #$20
 ok        eom
