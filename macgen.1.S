@@ -24,6 +24,7 @@
           ent  process_file
           ent  process_dir
           ent  buffer,input
+          ent  write_out
 
           ext  process_src
           ext  process_mac_dir
@@ -79,8 +80,8 @@ start
 
           jsr  count_missing
 
-          lda missing
-          beq :exit
+          lda  missing
+          beq  :exit
 
           do   0
           pei  table+2
@@ -89,8 +90,14 @@ start
           _HexDump
           fin
 
+          jsr  open_out
+          bcs  :exit
 
-          jsr process_mac_dir
+
+          jsr  process_mac_dir
+
+          jsr  write_out    ; any trailing buffer bits
+          jsr  close_out
 
           jsr  count_missing
 
@@ -147,17 +154,17 @@ count_missing
           bcc  ]loop
 :eol
 
-	  _QADrawCR
-	  pea 0
-	  pei missing
-	  pea 0
-	  pea 0
-	  _QADrawDec
-	  ~QADrawString #:missing
+          _QADrawCR
+          pea  0
+          pei  missing
+          pea  0
+          pea  0
+          _QADrawDec
+          ~QADrawString #:missing
 
 
           rts
-:missing  str ' missing macros',0d
+:missing  str  ' missing macros',0d
 
 print_mac
 * r0 = flags
@@ -652,7 +659,7 @@ cmp_entry
 
 * returns carry clear if entry found, carry set if missing.
 * updates index to pointer to entry (which will be empty if not found)
-* outputs: 
+* outputs:
 * a: flags (on success)
 * y: index
 
@@ -697,20 +704,13 @@ find_entry
           clc
           rts
 
-*insert_entry_mx
-*          php
-*          rep  #$30
-*          jsr  insert_entry
-*          bcc  :cc
-*          plp
-*          sec
-*          rts
-*:cc       plp
-*          clc
-*          rts
-*          mx   %00
 
 insert_entry
+*
+* returns carry set (and updates flags) if existing entry was updated
+* returns carry clear if new entry added.
+*
+
           debug 'insert_entry'
           mx   %00
 
@@ -1034,7 +1034,7 @@ process_dir
           ldy  #:name
           lda  [dcb],y
           clc
-          adc  #2 ; skip over output string capacity
+          adc  #2           ; skip over output string capacity
           sta  ptr
           iny
           iny
@@ -1053,7 +1053,7 @@ process_dir
           iny
           sep  #$20
 
-          sta  input ; length
+          sta  input        ; length
 ]loop
           lda  [ptr],y
           sta  input+1,x
@@ -1076,7 +1076,75 @@ process_dir
 
 
 
+open_out
+*
+* create and open the output file.
+*
 
+* todo -- append flag? -> don't delete, ignore create file dup errors.
+          _destroy :destroy
+
+          _create :create
+          bcs  :err
+
+          _open :open
+          bcs  :err
+          rts
+
+:err
+          pha               ; error
+          ~QADrawErrString #output
+          ~QADrawErrString #:cosp
+          _QAErrorMsg
+          sec
+          rts
+
+:cosp     str  ': '
+
+
+
+
+:destroy
+          dw   output       ; path
+
+:create
+          dl   output       ; path
+          dw   $c3          ; access
+          dw   $04          ; filetype - text
+          dl   $000         ; auxtype
+          dw   1            ; storage type
+          dw   0            ; date
+          dw   0            ; time
+:open
+refNum    dw   0            ; refNum
+          dl   output       ; path
+          dl   0            ; buffer
+
+
+close_out
+          _close refNum
+          rts
+
+write_out
+          lda  refNum
+          sta  :refNum
+
+          lda  buffer_offset
+          beq  :rts
+          sta  :reqCnt
+
+          _write :write
+
+          stz  buffer_offset
+
+:rts      rts
+
+
+:write
+:refNum   dw   0
+          dl   buffer
+:reqCnt   dl   0
+:xferCnt  dl   0
 
 
 **********
@@ -1168,6 +1236,8 @@ name      ds   name_size
 
 
 input     ds   1+MAX_PATH
+*output    ds   1+MAX_PATH
+output    str  'out.macs.s'
 buffer    ds   1024
 
 

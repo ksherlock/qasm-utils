@@ -29,6 +29,8 @@
           ext  process_dir
           ext  label,operand,name,flags
 
+          ext  write_out
+
 process_mac_dir
 * scan macro files in 4:
 * scan twice to resolve dependencies.
@@ -155,6 +157,10 @@ process_mac_line
 
           lda  #%1000_0000_0000_0000
           jsr  insert_entry
+          bcs  :pmcapp
+          inc  missing
+
+
 :pmcapp   jmp  append_line
 
 
@@ -184,6 +190,7 @@ process_mac_line
           jsr  update_entry ; just update the flags.
           lda  #$8080
           sta  inmac
+          dec  missing
 
 *          pha
 *          pea  1
@@ -198,19 +205,19 @@ append_line
           sec
           sbc  line_start
           clc
-          adc  offset
-          cmp  #512
-          bcc  :ok
+          adc  buffer_offset
+          cmp  #1024+1
+          bcc  :cp
 
-* todo - write macro buffer to disk...
+          jsr  write_out
 
-          stz  offset
+          stz  buffer_offset
 
 
-:ok
+:cp
           sep  #$20
           ldy  line_start
-          ldx  offset
+          ldx  buffer_offset
 
 ]loop     lda  [fptr],y
           and  #$7f
@@ -219,12 +226,11 @@ append_line
           iny
           cpy  line_end
           bcc  ]loop
-          stx  offset
+          stx  buffer_offset
 
           rts
 
 
-offset    dw   0
 
 
           sav  macgen.3.l

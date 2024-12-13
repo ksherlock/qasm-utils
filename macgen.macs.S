@@ -4,6 +4,31 @@ utool     mac
           jsl  $E10008
           <<<
 
+prodos16  mac
+          jsl  $e100a8
+          dw   ]1
+          dl   ]2
+          <<<
+
+_create   mac
+          prodos16 $01;]1
+          <<<
+
+_destroy  mac
+          prodos16 $02;]1
+          <<<
+
+_open     mac
+          prodos16 $10;]1
+          <<<
+
+_close    mac
+          prodos16 $14;]1
+          <<<
+
+_write    mac
+          prodos16 $13;]1
+          <<<
 
 debug     mac
           brl  eom
@@ -48,6 +73,7 @@ _QAGetCmdLine mac           ;_QAGetCmdLine(@strptr,maxlen)
           <<<
 
 ~QADrawErrStr MAC
+~QADrawErrString MAC
           phl  ]1
 _QADrawErrStr mac
 _QADrawErrString mac        ;_QADrawErrString(@strptr)
