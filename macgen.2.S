@@ -26,6 +26,9 @@
 
           ent  process_src
           ent  do_operand_pmc
+          ent  do_label
+          ent  do_opcode
+          ent  label,operand
 
 *
 * this scans the file and adds an entry for any encountered macros

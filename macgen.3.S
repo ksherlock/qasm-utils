@@ -29,16 +29,21 @@
           ext  process_dir
           ext  label,operand,name,flags
 
-inmac     dw   0
-missing   dw   0
-pass      dw   0
-
 process_mac_dir
 * scan macro files in 4:
 * scan twice to resolve dependencies.
 
+          debug 'process_mac_dir'
+
+*          pha
+*          pea 1
+*          _SetTrace
+*          pla
+
+
           stz  pass
           stz  inmac
+          stz  buffer_offset
           stz  missing
 
           lda  #process_mac_line-1
@@ -52,14 +57,21 @@ process_mac_dir
           lda  :4+4
           sta  input+4
           jsr  process_dir
+
           rts
-
-
 
 :4        strl '4:'
 
 
 process_mac_line
+
+          debug 'process_mac_line'
+
+*          pea 0
+*          pea 1
+*          _SetTrace
+*          pla ; 8-bit acc.
+*          pla
 
           mx   %10
           ldx  #0
@@ -73,9 +85,9 @@ process_mac_line
           jsr  do_label
           bcs  :eof         ; can skip the entire line
           jsr  do_opcode
-          bcs  :instr       ; was a label so we might need to copy it.
+          bcs  :lab?        ; was a label so we might need to copy it.
 
-          sty  y_save      ; for pmc...
+          sty  y_save       ; for pmc...
 
 * if we're not in a macro we care about, just check for 'mac'...
           rep  #$20
@@ -83,19 +95,31 @@ process_mac_line
           bmi  :lookup
 
           lda  name
-          cmp  #'m'*256+3   ; 03 'm'
+          cmp  :macstr      ; #'m'*256+3   ; 03 'm'
           bne  :nmac
           lda  name+2
-          cmp  #'ca'
+          cmp  :macstr+2    ; #'ca'
           bne  :nmac
           jmp  :mac
+
+:macstr   str  'mac'
+:lab?
+* line is label only - only include if we're in a macro
+          lda  label
+          beq  :nmac
+          bit  inmac
+          bmi  :instr
+
+
 :nmac
           rts
+
+
 
 :lookup
           jsr  find_entry
           bcs  :missing
-          lda  flags
+*          lda  flags
           and  #$00ff
           beq  :instr
           asl
@@ -135,6 +159,7 @@ process_mac_line
 
 
 :eom
+          debug ':eom'
           mx   %00
           stz  inmac
           jmp  append_line
@@ -153,12 +178,19 @@ process_mac_line
           rts
 
 :addmac
+          debug ':addmac'
           lda  #%0100_0000_0000_0000
           sta  flags
           jsr  update_entry ; just update the flags.
-          sec
-          ror  inmac
-* bra :instr2
+          lda  #$8080
+          sta  inmac
+
+*          pha
+*          pea  1
+*          _SetTrace
+*          pla
+
+
 * drop through....
 
 append_line
@@ -194,3 +226,5 @@ append_line
 
 offset    dw   0
 
+
+          sav  macgen.3.l

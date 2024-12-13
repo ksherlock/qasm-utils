@@ -49,6 +49,8 @@ dcb       dl   0
 
 buffer_offset dw 0
 pass      dw   0
+inmac	  dw   0
+missing   dw   0
 
 r0        dl   0
 r1        dl   0
@@ -58,6 +60,9 @@ r2        dl   0
 fhandle   dl   0
 fsize     dl   0
 fptr      dl   0
+
+
+verbose	  dw   0
 
           err  *>256
           dend

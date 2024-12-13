@@ -75,41 +75,12 @@ start
 * pass 2 - scan macrofiles for
 
 
-          do   0
-          pha
-          pea  #1
-          _SetTrace
-          pla
-          fin
-
           jsr  process_src
 
-*          phl  #buffer
-*          phw  #1024
-*          _HexDump
+          jsr  count_missing
 
-
-
-          do   0
-          pha
-          pea  #0
-          _SetTrace
-          pla
-          fin
-
-
-          jsr  dump
-          lda  #0
-:exit
-          pha
-          jsr  cleanup
-          pla
-          cmp  #1
-          rtl
-
-
-dump
-
+          lda missing
+          beq :exit
 
           do   0
           pei  table+2
@@ -118,51 +89,99 @@ dump
           _HexDump
           fin
 
+
+          jsr process_mac_dir
+
+          jsr  count_missing
+
+*          pea  #^buffer
+*          pea  #buffer
+*          pea  1024
+*          _HexDump
+
+
+          lda  #0
+:exit
+          pha
+          jsr  cleanup
+          pla
+          cmp  #1
+          rtl
+
+count_missing
+
+          stz  missing
+
           ldy  #0
 
 
 ]loop
+          sty  y_save
           lda  [table],y
           beq  :next
-
-
-          phy               ; save
 
           iny
           iny
           lda  [table],y
           sta  r0
-          and  #$00ff
-          bne  :ply         ; built-in
+          bit  #$00ff
+          bne  :next        ; built-in
+
+          bit  r0
+          bvs  :def
+          inc  missing
+          jsr  print_mac
+          bra  :next
+
+:def      bit  verbose
+          bpl  :next
+          jsr  print_mac
+:next
+
+          lda  y_save
+          clc
+          adc  #node_size
+          tay
+          bcs  :eol
+          cmp  #-node_size
+          bcc  ]loop
+:eol
+
+	  _QADrawCR
+	  pea 0
+	  pei missing
+	  pea 0
+	  pea 0
+	  _QADrawDec
+	  ~QADrawString #:missing
+
+
+          rts
+:missing  str ' missing macros',0d
+
+print_mac
+* r0 = flags
+
 * bit 15 indicates it's used
 * bit 14 indicate it's defined.
 
-*          asl
-*          bmi :ply ; built-in
+
+          lda  r0
+          rol
+          rol
+          rol
+          and  #%11
+          tax
+          lda  :keys,x
+          and  #$7f
+          pha
+          _QADrawChar
+          _QADrawSpace
 
 
-*          tya
-*   lda 1,s
-*          clc
-*          adc  #4
-
-          phy               ; save
-
-          lda  #'  '        ; ? is 0x3f, conveniently...
-          bit  r0
-*          bmi  :14
-*          ora  #' ?'
-:14       bvs  :pt
-          ora  #'? '
-:pt
-          sta  :tag+1
-          ~QADrawString #:tag
-
-          ply               ; restore
-          iny
-          iny
-          tya
+          lda  y_save
           clc
+          adc  #4           ; won't overflow
           adc  table
           tax
           lda  #0
@@ -172,23 +191,14 @@ dump
           _QADrawString
 
           _QADrawCR
-
-:ply
-          ply               ; restore
-
-
-:next
-          tya
-          clc
-          adc  #node_size
-          tay
-          bcs  :eol
-          cmp  #-node_size
-          bcc  ]loop
-:eol
           rts
+*     defined?  used?
+* 0 - no        no
+* 1 - no        yes
+* 2 - yes       no
+* 3 - yes       yes
+:keys     asc  ' !? '
 
-:tag      str  '    '
 
 cleanup
           ~DisposeHandle hash_handle
@@ -208,6 +218,8 @@ init
 * insert all mnemonics and pseudo-ops into the the hash table
 * MAC, PMC, <<<, >>> are special since we need them later.
 
+          lda  #$8080
+          sta  verbose
 
 
           ~NewHandle #$10000;myID;attrFixed.attrLocked.attrNoSpec;0
@@ -640,6 +652,10 @@ cmp_entry
 
 * returns carry clear if entry found, carry set if missing.
 * updates index to pointer to entry (which will be empty if not found)
+* outputs: 
+* a: flags (on success)
+* y: index
+
 find_entry
           debug 'find_entry'
           jsr  hash_node
@@ -673,6 +689,11 @@ find_entry
 
 :yes
           sty  index
+          iny
+          iny
+          lda  [table],y
+          dey
+          dey
           clc
           rts
 
@@ -801,6 +822,13 @@ loadfile
 * loads the file, updates fhandle, fptr, fsize
 
 
+* verbose
+          bit  verbose
+          bpl  :nov
+
+          ~QADrawString #input
+          ~QADrawString #:dots
+:nov
 
           pha
           pha               ; space
@@ -850,7 +878,7 @@ loadfile
           rts
 
 :cosp     str  ': '
-
+:dots     str  '...',0d
 
 
 txttypes  db   $02,$04,$B0
@@ -1006,7 +1034,7 @@ process_dir
           ldy  #:name
           lda  [dcb],y
           clc
-          adc  #2
+          adc  #2 ; skip over output string capacity
           sta  ptr
           iny
           iny
@@ -1019,28 +1047,26 @@ process_dir
           bcs  :return
 
 
-          sep  #$20
           tax
           tay
           iny
+          iny
+          sep  #$20
 
-          sta  input
+          sta  input ; length
 ]loop
           lda  [ptr],y
           sta  input+1,x
           dey
           dex
-          bne  ]loop
+          bpl  ]loop
 
           rep  #$20
+          stz  inmac
           jsr  process_file
 
 :return
-          pla
-          pla
-          pla
-          pla
-          pla
+
 
           pld
           plb

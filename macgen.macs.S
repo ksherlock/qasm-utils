@@ -11,13 +11,13 @@ debug     mac
           str  ]1
 eom       eom
 
-~QADrawString	MAC
-~QADrawStr	MAC
-	phl	]1
-_QADrawString	mac		;_QADrawString(@strptr)
-_QADrawStr	mac
-	utool	$0A
-	<<<
+~QADrawString MAC
+~QADrawStr MAC
+          phl  ]1
+_QADrawString mac           ;_QADrawString(@strptr)
+_QADrawStr mac
+          utool $0A
+          <<<
 
 _QADrawCR mac               ;_QADrawCR()
           utool $63
@@ -59,6 +59,28 @@ _QADrawErrString mac        ;_QADrawErrString(@strptr)
 _QAErrorMsg mac             ;_QAErrorMsg(ErrorCode)
           utool $34
           <<<
+
+
+~QADrawChar MAC
+          phw  ]1
+_QADrawChar mac             ;_QADrawChar(char)
+          utool $09
+          <<<
+
+_QADrawSpace mac            ;_QADrawSpace()
+          utool $64
+          <<<
+
+
+~QADrawDec MAC
+          phl  ]1
+          phw  ]2
+          phw  ]3
+_QADrawDec mac              ;_QADrawDec(longint/4,flags,fieldsize)
+          utool $0D
+          <<<
+
+
 
 
 _SetTrace mac
