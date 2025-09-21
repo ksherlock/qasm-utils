@@ -1,6 +1,7 @@
 
           lst  off
           rel
+          typ exe
           xc
           xc
           mx   %00
@@ -14,12 +15,6 @@ debug     mac
           dw   $7771
           str  ]1
 eom       eom
-
-
-_SetTrace mac
-          ldx  #$11ff
-          jsl  $e10000
-          eom
 
 
 readEnable equ $0001
@@ -152,7 +147,7 @@ help
           ~QADrawErrStr #:msg
           sec
           rts
-:msg      str  'Usage: dumpobj file.l',0d
+:msg      str  'Usage: dumprel file.l',0d
 
 
 
@@ -921,12 +916,6 @@ print_name
           pea  0
           _QADrawDec
 
-
-          pha
-          pea  0
-          _SetTrace
-          pla
-
           rts
 
 :ok
@@ -1063,4 +1052,4 @@ info_eof  dl   0
 input     ds   256+2
 
 
-          sav  objdump.l
+          sav  dumprel.l
