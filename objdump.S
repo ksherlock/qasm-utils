@@ -209,7 +209,7 @@ loadfile
           psl  #input+1
           psl  #0           ; pos
           psl  info_eof
-          psl  #0           ; type list
+          psl  #:type_list           ; type list
           psw  user_id
           psl  #0           ; address
           psw  #attrLocked.attrNoSpec
@@ -235,6 +235,7 @@ loadfile
           clc
           rts
 
+:type_list db 1,$f8
 
 
 PrWord_8000
