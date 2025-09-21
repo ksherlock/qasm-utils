@@ -69,7 +69,7 @@ q       ds 2
 :exith
         ~DisposeHandle handle
 :exit   lda #1
-        sec
+        clc
         rtl
 
 

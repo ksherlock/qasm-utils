@@ -88,7 +88,7 @@ main
           rtl
 
 :err      lda  #1
-          sec
+          clc
           rtl
 
 
